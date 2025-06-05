@@ -6,7 +6,10 @@ and plot windows.
 """
 
 # from dysh.fits.gbtfitsload import GBTFITSLoad, GBTOffline
-from band_allocations import band_allocation_ghz_dict
+try:
+    from band_allocations import band_allocation_ghz_dict
+except:
+    band_allocation_ghz_dict = {"none":{}}
 import matplotlib.pyplot as plt
 import astropy.units as u
 import numpy as np
