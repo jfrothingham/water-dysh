@@ -12,6 +12,7 @@ except:
     band_allocation_ghz_dict = {"none":{}}
 import matplotlib.pyplot as plt
 import astropy.units as u
+from datetime import datetime
 import numpy as np
 import os
 
@@ -283,6 +284,8 @@ def GBT_waterfall(sdf, session_ID, fmin_GHz=0, fmax_GHz=1e99, band_allocation="n
                         fd = tpsb[i].fdnum
                         df_kHz = np.round(np.abs(tpsb[i].meta[0]["CDELT1"])/1000, 3)
                         rcvr = tpsb[i].meta[0]["FRONTEND"]
+                        time_delta = datetime.strptime(timestamps[1], "%Y-%m-%dT%H:%M:%S.%f") - datetime.strptime(timestamps[0], "%Y-%m-%dT%H:%M:%S.%f")
+                        dt = np.round(time_delta.total_seconds(), 3)
 
                         print(f"plotting: scan = {scan} ifnum = {ifn} plnum = {pl} fdnum = {fd}")
 
@@ -308,7 +311,7 @@ def GBT_waterfall(sdf, session_ID, fmin_GHz=0, fmax_GHz=1e99, band_allocation="n
                         (ax1, ax2), (ax3, ax4) = gs.subplots(sharex="col", sharey="row")
 
                         #ax1
-                        ax1.set_title(f"{filename}\nrcvr: {rcvr}\npeak power: {max_val} counts\nScan {scan}\npolarization {pl}\nifnum {ifn}\nfdnum {fd}\ndf = {df_kHz} kHz\n")
+                        ax1.set_title(f"{filename}\nrcvr: {rcvr}\npeak power: {max_val} counts\nScan {scan}\npolarization {pl}\nifnum {ifn}\nfdnum {fd}\ndt = {dt} s\ndf = {df_kHz} kHz\n")
                         ax1.plot(freq, flux, color="black", linewidth=1)
                         ax1.set_yscale(scale)
                         ax1.set_ylim(np.nanmin(flux) - 0.05 * (np.nanmax(flux) - np.nanmin(flux)), np.nanmax(flux) + 0.25*(np.nanmax(flux) - np.nanmin(flux)))
