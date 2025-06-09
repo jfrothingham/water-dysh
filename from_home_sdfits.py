@@ -47,26 +47,38 @@ if __name__ == "__main__":
     #         "TRFI_123124_X1"
     #         ]
     older_xband = ["TRFI_123124_X1"]
+    test_list = ["AGBT25A_155_01"]
 
     # ku-band 
     ku_band_post_spaceX_sessions = ["TRFI_123124_U1", "TRFI_122424_U1", "TRFI_122224_U1","TRFI_122024_U1"]
     
-    from_archive = True
+    #from_archive = True
     outdir = "/home/scratch/jfrothin/RFI/plots/"
 
-    for session_ID in remijan_rfi:
-        sdf = GBTOffline(session_ID) # for data in /home/sdfits
+    # for session_ID in test_list:
+    #     sdf = GBTOffline(session_ID) # for data in /home/sdfits
         
-        GBT_waterfall(sdf, session_ID, 
-                      fmin_GHz=1.97, 
-                      fmax_GHz=2, 
-                      band_allocation="starlink", 
-                      outdir=outdir, 
-                      cal_type="raw_data")
+    #     GBT_waterfall(sdf, session_ID, 
+    #                   fmin_GHz=1.97, 
+    #                   fmax_GHz=2, 
+    #                   band_allocation="starlink", 
+    #                   outdir=outdir, 
+    #                   cal_type="raw_data")
         
-        GBT_waterfall(sdf, session_ID, 
-                      fmin_GHz=1.97, 
-                      fmax_GHz=2, 
-                      band_allocation="starlink", 
-                      outdir=outdir, 
-                      cal_type="median_subtract")
+    #     GBT_waterfall(sdf, session_ID, 
+    #                   fmin_GHz=1.97, 
+    #                   fmax_GHz=2, 
+    #                   band_allocation="starlink", 
+    #                   outdir=outdir, 
+    #                   cal_type="median_subtract")
+    
+    session_ID = "TRFI_123124_U1"
+    sdf = GBTOffline(session_ID) # for data in /home/sdfits
+    
+    GBT_waterfall(sdf, session_ID,  
+                  outdir=outdir, 
+                  cal_type="raw_data")
+    
+    GBT_waterfall(sdf, session_ID, 
+                  outdir=outdir, 
+                  cal_type="median_subtract")
