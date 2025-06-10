@@ -370,5 +370,5 @@ def GBT_waterfall(sdf, session_ID, fmin_GHz=0, fmax_GHz=1e99, band_allocation="n
                         fig.colorbar(wf, ax=ax4, label='power [counts]', location='right')
                         ax1.set_xlim(np.min(freq), np.max(freq))
                         ax3.set_xlim(np.min(freq), np.max(freq))
-                        plt.savefig(f"{outdir}/{os.path.basename(filename)}_waterfall_ifnum_{ifn}_scan_{scan}_plnum_{pl}_fdnum_{fd}_caltype_{cal_type}_metatdata.{plot_type}", bbox_inches="tight", transparent=False)
+                        plt.savefig(f"{outdir}/{os.path.basename(filename)}_waterfall_ifnum_{ifn}_scan_{scan}_plnum_{pl}_fdnum_{fd}_caltype_{cal_type}_metadata.{plot_type}", bbox_inches="tight", transparent=False)
                         plt.close("all")
