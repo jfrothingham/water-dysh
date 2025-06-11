@@ -5,7 +5,6 @@ data to be read in can be manually set, as well as any input/output directories
 and plot windows. 
 """
 
-# from dysh.fits.gbtfitsload import GBTFITSLoad, GBTOffline
 try:
     from band_allocations import band_allocation_ghz_dict
 except:
@@ -212,6 +211,48 @@ def get_metadata(tpsb, i=0):
 
     return az_values, el_values, timestamps
 
+def frequency_cut(flux, freq, ts_no_spur, average_spect, fmin_GHz=0, fmax_GHz=1e99):
+    """
+    Option to apply a frequency mask to the data. This function is used as an intermediate
+    helper function when plotting the data.
+
+    Arguments:
+    ----------------
+    flux : numpy.ma.MaskedArray
+        masked array containing the average spectrum of the given data. 
+    freq : numpy.ndarray
+        the frequency axis of the given data
+    ts_no_spur_median_subtracted : numpy.ma.MaskedArray
+        The time series data of the scan block. It has shape (n_int, nchan). 
+    average_spect : dysh.spectra.spectrum.Spectrum
+        The spectrum object that contains all the metadata relevant to the scan. 
+        This is mainly used for extracting metadata for plotting
+    fmin_GHz : float
+        minimum frequency that will be plotted. The default is 0 GHz. 
+    fmax_GHz : float
+        maximum frequency that will be plotted. The default is 1e99 GHz. 
+
+    Returns:
+    ---------------- 
+    flux : numpy.ma.MaskedArray
+        Freqnuency masked array containing the average spectrum of the given data. 
+    freq : numpy.ndarray
+        The masked frequency axis of the given data
+    ts_no_spur_median_subtracted : numpy.ma.MaskedArray
+        The time series data of the scan block. It has shape (n_int, nchan). 
+        nchan is now the number of frequency channels that fall within the 
+        specified boundaries. 
+    average_spect : dysh.spectra.spectrum.Spectrum
+        The frequency masked spectrum object that contains all the metadata 
+        relevant to the scan. This is mainly used for extracting metadata for plotting
+    """
+    freq_mask = np.where((freq >= fmin_GHz) & (freq <= fmax_GHz))
+    average_spect = average_spect.data[freq_mask]
+    ts_no_spur = ts_no_spur[::, freq_mask][::, 0, ::]
+    freq = freq[freq_mask]
+    flux = flux[freq_mask]
+    return flux, freq, ts_no_spur, average_spect
+
 def GBT_waterfall(sdf, session_ID, fmin_GHz=0, fmax_GHz=1e99, band_allocation="none", cal_type="median_subtract", scale="linear", outdir="./", plot_type="png"):
     """
     Generates a waterfall plot of the given data. The data can be restricted in frequency 
@@ -225,9 +266,9 @@ def GBT_waterfall(sdf, session_ID, fmin_GHz=0, fmax_GHz=1e99, band_allocation="n
         session ID for an observation. This is used to identify the observation
         as well as generate the directory structure for saving the plots 
     fmin_GHz : float
-        minimum frequency that will be plotted
+        minimum frequency that will be plotted. The default is 0 GHz. 
     fmax_GHz : float
-        maximum frequency that will be plotted
+        maximum frequency that will be plotted. The default is 1e99 GHz. 
     band_allocation : str
         the key to identify which set of band allocations to 
         overlay on the plot. Running which_band_allocation() will 
