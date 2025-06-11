@@ -293,123 +293,168 @@ def GBT_waterfall(sdf, session_ID, fmin_GHz=0, fmax_GHz=1e99, band_allocation="n
     assert band_allocation in band_options, "the available band_allocation options are %s"%band_options
     assert fmin_GHz < fmax_GHz, "warning: fmin is greater than fmax"
 
-    scans = sdf.summary()["SCAN"].values
-    plnums = np.arange(sdf.summary()["# POL"].values[0])
-    ifnums = np.arange(sdf.summary()["# IF"].values[0])
-    fdnums = np.arange(sdf.summary()["# FEED"].values[0])
-
     # ensure that the output directory structure exists
     check_dir(outdir)
     outdir = f"{outdir}/{session_ID}/"
     check_dir(outdir)
 
+    summary_df = sdf.summary()
+
+    # switch between uniform or granular plotting logic
+    if_difference = np.diff(summary_df["# IF"].values)
+    pl_difference = np.diff(summary_df["# POL"].values)
+    fd_difference = np.diff(summary_df["# FEED"].values)
+    all_diffs = np.hstack([if_difference, pl_difference, fd_difference])
+    
+    # check if all scans were performed with the same setup
+    if np.any(all_diffs != 0):
+        # individually handle each scan
+        single_scan_waterfall(sdf, fmin_GHz=fmin_GHz, fmax_GHz=fmax_GHz, band_allocation=band_allocation, cal_type=cal_type, scale=scale, outdir=outdir, plot_type=plot_type)
+    else:
+        # all scans were performed with the same setup
+        uniform_waterfalls(sdf, fmin_GHz=fmin_GHz, fmax_GHz=fmax_GHz, band_allocation=band_allocation, cal_type=cal_type, scale=scale, outdir=outdir, plot_type=plot_type)
+
+def uniform_waterfalls(sdf, fmin_GHz=0, fmax_GHz=1e99, band_allocation="none", cal_type="median_subtract", scale="linear", outdir="./", plot_type="png"):
+    """
+    A helper function called from GBT_waterfall to handle the loop logic for observations in which 
+    all scans were performed with the same number of polarizatoins, IF windows, and feeds. 
+    For a detailed description of the arguments, see the documentation for GBT_waterfalls
+    """
+    summary_df = sdf.summary()
+    scans = summary_df["SCAN"].values
+
+    plnums = np.arange(summary_df["# POL"].values[0])
+    ifnums = np.arange(summary_df["# IF"].values[0])
+    fdnums = np.arange(summary_df["# FEED"].values[0])
+
     for fdnum in fdnums:
         for plnum in plnums:
             for ifnum in ifnums:
-                tpsb = sdf.gettp(scan=scans,ifnum=ifnum,plnum=plnum,fdnum=fdnum) # may need to move this inside the next loop
+                tpsb = sdf.gettp(scan=scans,ifnum=ifnum,plnum=plnum,fdnum=fdnum)
                 for i in range(len(scans)):
-                    # I may need to move the gettp commands inside the calibration function below
-                    # the calibration steps MUST happen before any slicing of the data takes place. 
-                    # It is possible for the windowing to only select high RFI regions, which would
-                    # lead to artifacts in the calibration
-                    flux, freq, ts_no_spur, average_spect = calbration_type[cal_type](tpsb, i)
+                    tpsb = sdf.gettp(scan=scans,ifnum=ifnum,plnum=plnum,fdnum=fdnum) 
+                    plot_waterfall(sdf, tpsb, i=i, fmin_GHz=fmin_GHz, fmax_GHz=fmax_GHz, band_allocation=band_allocation, cal_type=cal_type, scale=scale, outdir=outdir, plot_type=plot_type)
 
-                    if np.any( freq < fmax_GHz) and np.any( freq > fmin_GHz):
+def single_scan_waterfall(sdf, fmin_GHz=0, fmax_GHz=1e99, band_allocation="none", cal_type="median_subtract", scale="linear", outdir="./", plot_type="png"):
+    """
+    A helper function called from GBT_waterfall to handle the loop logic for observations in which 
+    there are scans with differing numbers of polarizations or IF windows or feeds
+    For a detailed description of the arguments, see the documentation for GBT_waterfalls
+    """
+    summary_df = sdf.summary()
+    scans = summary_df["SCAN"].values
 
-                        az_values, el_values, timestamps = get_metadata(tpsb, i=i)
+    # for each scan, pull the number of feeds, polarizations, and IF windows
+    # there is no reason to assume that they will be the same for all scans in a session
+    for this_scan in scans:
+        fdnums = np.arange(summary_df[summary_df["SCAN"] == this_scan]["# FEED"].iloc[0])
+        for fdnum in fdnums:
+            plnums = np.arange(summary_df[summary_df["SCAN"] == this_scan]["# POL"].iloc[0])
+            for plnum in plnums:
+                ifnums = np.arange(summary_df[summary_df["SCAN"] == this_scan]["# IF"].iloc[0])
+                for ifnum in ifnums:
+                    tpsb = sdf.gettp(scan=[this_scan],ifnum=ifnum,plnum=plnum,fdnum=fdnum) 
+                    plot_waterfall(sdf, tpsb, i=0, fmin_GHz=fmin_GHz, fmax_GHz=fmax_GHz, band_allocation=band_allocation, cal_type=cal_type, scale=scale, outdir=outdir, plot_type=plot_type)
 
-                        filename = sdf.filename
-                        scan = tpsb[i].scan
-                        pl = polnum_to_pol[average_spect.meta["CRVAL4"]]
-                        ifn = tpsb[i].ifnum
-                        fd = tpsb[i].fdnum
-                        df_kHz = np.round(np.abs(tpsb[i].meta[0]["CDELT1"])/1000, 3)
-                        rcvr = tpsb[i].meta[0]["FRONTEND"]
-                        time_delta = datetime.strptime(timestamps[1], "%Y-%m-%dT%H:%M:%S.%f") - datetime.strptime(timestamps[0], "%Y-%m-%dT%H:%M:%S.%f")
-                        dt = np.round(time_delta.total_seconds(), 3)
+def plot_waterfall(sdf, tpsb, i=0, fmin_GHz=0, fmax_GHz=1e99, band_allocation="none", cal_type="median_subtract", scale="linear", outdir="./", plot_type="png"):
+    """
+    A helper function that generates and annotates a waterfall plot from GBT sdfits data. 
+    This function is called from within other functions and is not meant to be called on its own. 
+    For a detailed description of the arguments, see the documentation for GBT_waterfalls
+    """
+    flux, freq, ts_no_spur, average_spect = calbration_type[cal_type](tpsb, i)
 
-                        print(f"plotting: scan = {scan} ifnum = {ifn} plnum = {pl} fdnum = {fd}")
+    if np.any( freq < fmax_GHz) and np.any( freq > fmin_GHz):
 
-                        # option to apply a frequency mask to the data
-                        freq_mask = np.where((freq >= fmin_GHz) & (freq <= fmax_GHz))
-                        average_spect = average_spect.data[freq_mask]
-                        ts_no_spur = ts_no_spur[::, freq_mask][::, 0, ::]
-                        freq = freq[freq_mask]
-                        flux = flux[freq_mask]
-                        extent = [freq[0], freq[-1], 0, len(ts_no_spur)]
+        az_values, el_values, timestamps = get_metadata(tpsb, i=i)
 
-                        max_val = np.nanmax(ts_no_spur)
-                        y = np.arange(len(ts_no_spur))
-                        data_sd = np.nanstd(ts_no_spur)
-                        data_mean = np.ma.median(ts_no_spur)
-                        vmax = data_mean + 2*data_sd
-                        vmin = data_mean - 2*data_sd
+        filename = sdf.filename
+        scan = tpsb[i].scan
+        pl = polnum_to_pol[average_spect.meta["CRVAL4"]]
+        ifn = tpsb[i].ifnum
+        fd = tpsb[i].fdnum
+        df_kHz = np.round(np.abs(tpsb[i].meta[0]["CDELT1"])/1000, 3)
+        rcvr = tpsb[i].meta[0]["FRONTEND"]
+        time_delta = datetime.strptime(timestamps[1], "%Y-%m-%dT%H:%M:%S.%f") - datetime.strptime(timestamps[0], "%Y-%m-%dT%H:%M:%S.%f")
+        dt = np.round(time_delta.total_seconds(), 3)
 
-                        plt.close("all")
-                        time_series = np.nanmean(ts_no_spur, axis=1)
-                        fig = plt.figure(figsize=(10,10))
-                        gs = fig.add_gridspec(2,2, hspace=0.02, wspace=0.03, width_ratios=[3,1], height_ratios=[1,3])
-                        (ax1, ax2), (ax3, ax4) = gs.subplots(sharex="col", sharey="row")
+        print(f"plotting: scan = {scan} ifnum = {ifn} plnum = {pl} fdnum = {fd}")
+        
+        flux, freq, ts_no_spur, average_spect = frequency_cut(flux, freq, ts_no_spur, average_spect)
+        extent = [freq[0], freq[-1], 0, len(ts_no_spur)]
 
-                        #ax1
-                        ax1.set_title(f"{filename}\nrcvr: {rcvr}\npeak power: {max_val} counts\nScan {scan}\npolarization {pl}\nifnum {ifn}\nfdnum {fd}\ndt = {dt} s\ndf = {df_kHz} kHz\n")
-                        ax1.plot(freq, flux, color="black", linewidth=1)
-                        ax1.set_yscale(scale)
-                        ax1.set_ylim(np.nanmin(flux) - 0.05 * (np.nanmax(flux) - np.nanmin(flux)), np.nanmax(flux) + 0.25*(np.nanmax(flux) - np.nanmin(flux)))
-                        ax1.set_ylabel("average power\n[counts]")
-                        plot_band_allocations(ax1, freq, band_allocation=band_allocation)
+        max_val = np.nanmax(ts_no_spur)
+        y = np.arange(len(ts_no_spur))
+        data_sd = np.nanstd(ts_no_spur)
+        data_mean = np.ma.median(ts_no_spur)
+        vmax = data_mean + 2*data_sd
+        vmin = data_mean - 2*data_sd
 
-                        #ax2
-                        ax2.set_visible(not ax2)
+        plt.close("all")
+        time_series = np.nanmean(ts_no_spur, axis=1)
+        fig = plt.figure(figsize=(10,10))
+        gs = fig.add_gridspec(2,2, hspace=0.02, wspace=0.03, width_ratios=[3,1], height_ratios=[1,3])
+        (ax1, ax2), (ax3, ax4) = gs.subplots(sharex="col", sharey="row")
 
-                        #ax3
-                        wf = ax3.imshow(ts_no_spur, aspect="auto", extent=extent, vmin=vmin, vmax=vmax, origin="lower")
-                        ax3.set_xlabel("Frequency [GHz]")
-                        ax3.set_ylabel("timestamp [UTC]\npointing (AZ, EL)")
-                        plot_band_allocations(ax3, freq, band_allocation=band_allocation, show_label=False)
+        #ax1
+        ax1.set_title(f"{filename}\nrcvr: {rcvr}\npeak power: {max_val} counts\nScan {scan}\npolarization {pl}\nifnum {ifn}\nfdnum {fd}\ndt = {dt} s\ndf = {df_kHz} kHz\n")
+        ax1.plot(freq, flux, color="black", linewidth=1)
+        ax1.set_yscale(scale)
+        ax1.set_ylim(np.nanmin(flux) - 0.05 * (np.nanmax(flux) - np.nanmin(flux)), np.nanmax(flux) + 0.25*(np.nanmax(flux) - np.nanmin(flux)))
+        ax1.set_ylabel("average power\n[counts]")
+        plot_band_allocations(ax1, freq, band_allocation=band_allocation)
 
-                        pointing_coords = []
-                        for j in range(len(az_values)):
-                            pointing_coords.append(f"({np.round(az_values[j], 2)}, {np.round(el_values[j], 2)})")
+        #ax2
+        ax2.set_visible(not ax2)
 
-                        all_labels = []
-                        for i in range(len(timestamps)):
-                            all_labels.append(timestamps[i] + "\n" + pointing_coords[i])
+        #ax3
+        wf = ax3.imshow(ts_no_spur, aspect="auto", extent=extent, vmin=vmin, vmax=vmax, origin="lower")
+        ax3.set_xlabel("Frequency [GHz]")
+        ax3.set_ylabel("timestamp [UTC]\npointing (AZ, EL)")
+        plot_band_allocations(ax3, freq, band_allocation=band_allocation, show_label=False)
 
-                        # update y-tick labels 
-                        if len(ax3.get_yticks()) > len(all_labels):
-                            ax3.set_yticks(np.arange(len(all_labels)) + 1)
-                            ax3.set_yticklabels(np.arange(len(all_labels)) + 1)
+        pointing_coords = []
+        for j in range(len(az_values)):
+            pointing_coords.append(f"({np.round(az_values[j], 2)}, {np.round(el_values[j], 2)})")
 
-                            integration_indices = []
-                            for index in range(len(ax3.get_yticklabels())):
-                                integration_indices.append(int(ax3.get_yticklabels()[index].get_text()))
+        all_labels = []
+        for i in range(len(timestamps)):
+            all_labels.append(timestamps[i] + "\n" + pointing_coords[i])
 
-                            new_labels = []
-                            new_labels.append(all_labels[0])
-                            for index in integration_indices[1:]:
-                                new_labels.append(all_labels[index-1])
+        # update y-tick labels 
+        if len(ax3.get_yticks()) > len(all_labels):
+            ax3.set_yticks(np.arange(len(all_labels)) + 1)
+            ax3.set_yticklabels(np.arange(len(all_labels)) + 1)
 
-                            yticks = ax3.get_yticks()
-                            ax3.set_yticks(yticks)
-                            ax3.set_yticklabels(new_labels)
-                        else:
-                            integration_indices = np.linspace(0, len(ts_no_spur), num=len(ax3.get_yticklabels()), dtype=int)
-                            new_labels = []
-                            new_labels.append(all_labels[0])
-                            for index in integration_indices[1:]:
-                                new_labels.append(all_labels[index-1])
-                            
-                            ax3.set_yticks(integration_indices)
-                            ax3.set_yticklabels(new_labels)
+            integration_indices = []
+            for index in range(len(ax3.get_yticklabels())):
+                integration_indices.append(int(ax3.get_yticklabels()[index].get_text()))
 
-                        #ax4
-                        ax4.plot(time_series, y + 0.5, color="black", linewidth=1)
-                        ax4.set_xscale(scale)
-                        ax4.set_xlabel("\naverage power per\nfrequency channel\n[counts]")
+            new_labels = []
+            new_labels.append(all_labels[0])
+            for index in integration_indices[1:]:
+                new_labels.append(all_labels[index-1])
 
-                        fig.colorbar(wf, ax=ax4, label='power [counts]', location='right')
-                        ax1.set_xlim(np.min(freq), np.max(freq))
-                        ax3.set_xlim(np.min(freq), np.max(freq))
-                        plt.savefig(f"{outdir}/{os.path.basename(filename)}_waterfall_ifnum_{ifn}_scan_{scan}_plnum_{pl}_fdnum_{fd}_caltype_{cal_type}_metadata.{plot_type}", bbox_inches="tight", transparent=False)
-                        plt.close("all")
+            yticks = ax3.get_yticks()
+            ax3.set_yticks(yticks)
+            ax3.set_yticklabels(new_labels)
+        else:
+            integration_indices = np.linspace(0, len(ts_no_spur), num=len(ax3.get_yticklabels()), dtype=int)
+            new_labels = []
+            new_labels.append(all_labels[0])
+            for index in integration_indices[1:]:
+                new_labels.append(all_labels[index-1])
+            
+            ax3.set_yticks(integration_indices)
+            ax3.set_yticklabels(new_labels)
+
+        #ax4
+        ax4.plot(time_series, y + 0.5, color="black", linewidth=1)
+        ax4.set_xscale(scale)
+        ax4.set_xlabel("\naverage power per\nfrequency channel\n[counts]")
+
+        fig.colorbar(wf, ax=ax4, label='power [counts]', location='right')
+        ax1.set_xlim(np.min(freq), np.max(freq))
+        ax3.set_xlim(np.min(freq), np.max(freq))
+        plt.savefig(f"{outdir}/{os.path.basename(filename)}_waterfall_ifnum_{ifn}_scan_{scan}_plnum_{pl}_fdnum_{fd}_caltype_{cal_type}_metadata.{plot_type}", bbox_inches="tight", transparent=False)
+        plt.close("all")
